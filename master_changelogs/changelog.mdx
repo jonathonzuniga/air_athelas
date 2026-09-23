@@ -4,6 +4,242 @@ description: "Stay up to date with the latest product updates, bug fixes, and ne
 public: true
 ---
 
+<Update label="August 31, 2026" tags={["Insights"]}>
+
+  ### Self-Serve Provider-Level Adjustments
+
+  <img className="w-full rounded-xl" src="/images/master_changelogs/changelog/2026_08_31/provider-adjustments.webp" alt="Check detail panel with the Provider Adjustments tab open, listing each adjustment's code, reason, amount, posting status, and actions" />
+
+  Your billing team can now work the provider-level adjustments on a remittance (overpayment recoveries, forwarding balances, interest, and small-balance write-offs) from the **Provider Adjustments** tab on a check:
+
+  - Filter the **Checks** tab to checks with unposted provider adjustments, and filter by more than one posting status at a time.
+  - Post adjustments to the check or to a claim, one at a time or in bulk.
+  - Archive adjustments that should never post, unarchive them later, and see the reason an adjustment was archived or sent to manual review.
+  - Reallocate a posted adjustment across claims, move a claim-linked adjustment back to the check, and post an adjustment that is waiting in **Manual review**.
+
+  See the [Provider Adjustments guide](/insights_biller/general_billing/provider_adjustments) for the full workflow.
+
+  ### Legacy Billing Pages Are Archived Starting October 1, 2026
+
+  Starting **October 1, 2026**, the legacy billing pages are archived, and their work continues on the Claims page and the new Appointments page. Each legacy page shows a banner with the date.
+
+  - **Submission Errors**, **Rejections**, **Denials Worklist**, **Claim Recon**, **Bulk Resubmission**, **Encounter Details**, and the old **Claim Details** page are replaced by the [Claims page](/insights_biller/claim_details/claim_details_page).
+  - The old appointments page is replaced by the new [Appointments page](/insights_front_desk/appointments/the_insights_appointments_page).
+  - The **Denials** and **Encounter Working Status** filters are retired from the Claims page. Saved views that used them no longer apply those filters and may show more claims, so check your team's views.
+  - The **Recon** and **Rerecon** work queues are renamed **Decision Pending** and **Decision Inconclusive**, matching the [claim statuses](/insights_biller/claim_details/status_and_stages) of the same name.
+
+  ### More of the Claim's Story in the Activity Feed
+
+  The **Activity Feed** on each claim now records more of what happens to it, so you can follow a claim without leaving the Claims page:
+
+  - A badge on the activity feed icon shows how many comments a claim has, even while the feed is collapsed.
+  - New events cover payment posting (one event per posting instead of several), patient charges and patient payments, remittances received, claims becoming ready to submit, and automatic deferrals.
+  - Rework is tracked from start to finish: the feed records when medical records are submitted, when reprocessing is requested, and when an appeal is submitted, along with how each one resolves.
+  - There is less noise. Procedure-level remittance events are consolidated, changes that net to zero are hidden, and rule-override events are worded more clearly.
+
+  ### Sales Tax on Custom Line Items
+
+  Practices that sell taxable products can now charge sales tax on custom line items. Turn it on in **My Practice → PR Settings**, then set a tax rate for each facility:
+
+  - Sales tax appears as its own line at checkout and on receipts.
+  - Patient statements and payment links show the tax.
+  - Transaction reports include the sales tax collected on custom line item payments.
+
+  ### [Beta Users Only] Dashboards
+
+  <img className="w-full rounded-xl" src="/images/master_changelogs/changelog/2026_08_31/dashboards.webp" alt="Dashboards gallery in Insights showing the Financial Health Overview, Biller Productivity, and Clinical Operations dashboards" />
+
+  **Dashboards** is a new analytics page under **Insights** that puts financial and billing-operations metrics on one screen, queried live:
+
+  - Financial health cards cover charges, payments posted (split between insurance and patient), net collection rate, days in A/R, A/R aging activity, first-pass and clean-claim rates, denials, and unassigned claims.
+  - A biller leaderboard tracks productivity, and the whole dashboard can be filtered by biller.
+  - Billing-mix metrics include paid per encounter, charged per encounter, and insurance paid per CPT unit.
+  - Cards compare against the prior year or month and offer a quarterly view, and you can set a goal on a metric.
+  - Click a card or a chart bar to drill into the claims or payments behind the number, then sort them and download a CSV.
+
+  See the [Dashboards guide](/insights_biller/analytics/dashboards). Contact your account manager for access.
+
+  ### [Beta Users Only] Rule Creation Updates
+
+  Rule creation, which entered beta alongside the Unified Rules UI in July, picked up several additions:
+
+  - Test a new rule against real claims before you activate it.
+  - Parent sites can create rules for their child sites.
+  - Every rule now requires a description, and rule names can be edited.
+  - Conditions support **IN** and **NOT IN** operators and can be dragged between condition groups.
+  - Inactive rules can be deleted, and each rule's activity log accepts comments.
+
+  See [Create a Rule](/insights_biller/automations/create_a_rule). Contact your account manager for access.
+
+  ### Bug Fixes and Improvements
+
+  **Claims & Submission:**
+  - Editing an institutional submission no longer requires a PPS (DRG) code.
+  - When saving a claim adds a payer partway through a submission, Insights now asks which payer to submit to instead of resubmitting to the primary as a corrected claim.
+  - Diagnosis codes starting with V, W, X, or Y now show the **Accident Date** field on the claim.
+  - Switching a claim to self-pay no longer fails, and a prior authorization can be added again after one is deleted.
+  - The insurance card shows the payer ID, the properties panel reads **Provider** instead of Rendering Provider, and **Copy claim URLs** puts each URL on its own line.
+
+  **Claim Context:**
+  - The remittances table adds **Ins Paid**, **PR Amount**, and **Other PR** columns.
+  - The submissions table adds a **Created Date** column, and submissions and remittances are listed newest first.
+  - Claim-level adjudication appears first in payments, fully denied \$0 procedures read N/A instead of Pending, and multiple submission error reasons are spaced apart.
+
+  **Bulk Actions:**
+  - Arrow keys and Enter work inside action groups and in the insurance and provider actions, and Cmd/Ctrl+Enter saves a comment.
+  - The **More actions** dialog closes after an action runs, the undo toast pauses while you hover over it, and a running bulk submission shows how many claims it is submitting.
+  - Claims can be switched to self-pay in bulk, and pushing balances to patient responsibility accepts an exact amount per procedure, including \$0.
+  - The bulk adjustment step adds a **Remaining balance** row and a description for each adjustment reason code.
+
+  **Views, Appointments & Patients:**
+  - Hovering over a saved view previews its ordering, grouping, and filters before you switch to it.
+  - On the Appointments page, you can click a balance to print a patient statement, add an **Appointment Type** column, see a single **Skipped Collection** tag with the reasons on hover, and pick eligibility coverage values (such as Active or Inconclusive) when adding a filter.
+  - The patient page's overflow menu has a **Go to…** section that links to the patient's claims and EHR profile.
+  - Automatic pre-visit payment links now go only to patients who have an amount due.
+
+  **Reporting & Posting:**
+  - My Reports adds a **Patient Credits** report in a new **Month End Close** section.
+  - The Claim Details report shows the payer and payer group even before a claim is submitted.
+  - Aging A/R PDF and detailed report totals now match, and the detailed report adds an **Insurance Type** column.
+  - The 835 remittance uploader now accepts .dat files.
+
+</Update>
+
+<Update label="August 30, 2026" tags={["Air"]}>
+
+  ### Outreach Flows: Images, New Filters, and New Templates
+
+  Outreach Flows can now send richer, better-targeted messages:
+
+  - **Insert Image** in the email editor to upload an image or paste its URL (up to 5 MB). Images render in Gmail, Outlook, and Apple Mail.
+  - New targeting filters: **Referral Type** (for both patients and leads), **Birthday** (today, this week, or this month), and **Portal registration status**.
+  - Four new suggested templates: **Reactivation Campaign**, **Discharged Patient**, **Birthday Message**, and **Patient Portal Invitation**.
+
+  See the [Outreach Flows guide](/air_front_desk/communicate_with_patients/outreach_flows).
+
+  ### Eligibility Details in the Calendar
+
+  The appointment view in the calendar now shows more eligibility detail:
+
+  - When the member ID on file differs from the one the payer returns, both are shown side by side, and an alert flags the mismatch automatically.
+  - The patient's available credits are shown on the appointment.
+  - Results that come back **Inconclusive (Site Action Required)** now come with next steps.
+  - A **Report Issue** flag lets staff report a suggested patient responsibility rule that looks wrong.
+
+  ### Automatic Lead Creation from Faxes
+
+  <img className="w-full rounded-xl" src="/images/master_changelogs/changelog/2026_08_30/fax-lead-creation.webp" alt="Faxing preferences showing the Patient Lead Fax Configuration section with the Enable auto lead generation from faxes toggle and the Default Lead Type setting" />
+
+  Air now turns inbound referral faxes into **Lead Tracker** leads without manual data entry. When a referral fax arrives, Air reads it, pulls out the patient's name, date of birth, and contact information, and creates a lead linked back to the fax.
+
+  - Turn on **Enable auto lead generation from faxes** in **Preferences → Administrative → Faxing**, then choose the lead type and Lead Tracker stage for leads created from faxes.
+  - Faxing and the Lead Tracker now say "lead" instead of "referral" throughout, and a fax can be unassigned from a lead.
+
+  See [Automatic Lead Creation from Faxes](/air_admin/manage_your_practice/automatic_lead_creation_from_faxes) and the [Lead Tracker guide](/air_admin/manage_your_practice/lead_tracker).
+
+  ### Patient-Initiated Messaging in the Patient Portal
+
+  Every practice that uses the patient portal can now let patients start a conversation from the portal instead of only replying to messages from staff. The setting is off by default. When you turn it on, you choose who patients can message: their previous providers, specific users or user groups, or anyone. See [Messaging Permissions](/air_front_desk/portal_and_online_scheduling/patient_portal#messaging-permissions).
+
+  ### [Beta Users Only] Scheduling Templates
+
+  <video controls className="w-full aspect-video rounded-xl">
+    <source src="/images/master_changelogs/changelog/2026_08_30/scheduling-templates.mp4" type="video/mp4" />
+    Your browser does not support the video tag.
+  </video>
+
+  **Scheduling Templates** let you build a provider's week once, covering the hours they work and what can be booked in each part of the day, and then reuse it:
+
+  - Build a template by hand, or describe the schedule in plain language to the AI builder and accept or reject each proposed change.
+  - Mark slots as bookable or non-bookable, choose which appointment types each bookable slot accepts, and color-code slots and blocks.
+  - Apply a template to one or many providers across a date range. The calendar shows the open slots, and a warning appears when a booking conflicts with a reserved slot.
+  - Only admins can create, manage, and apply templates.
+
+  See the [Scheduling Templates guide](/air_admin/manage_your_practice/scheduling_templates). Contact your account manager for access.
+
+  ### [Beta Users Only] Care Notes
+
+  Care notes give your team a place in the chart for patient communication that isn't tied to a visit, such as phone calls, outside records, and messages from other providers:
+
+  - Add a care note from the patient's **Visits & Notes** tab, optionally with a case, a source (such as Patient, PCP/Physician, Hospital, or Fax), and an attachment.
+  - Assign the note to a teammate or a group as a task, and the task links back to the note.
+  - An entry can't be changed once it's added, so each care note keeps a complete activity thread. Close a note together with its tasks, or reopen it later.
+  - Care notes appear alongside visits in the patient's timeline, and you can download or fax up to 25 closed notes (care notes and visit notes together) as PDFs at once.
+
+  Contact your account manager for access.
+
+  ### [Beta Users Only] Smart Charge Capture
+
+  Smart charge capture turns a procedure you perform often into a single bundle. Admins build the bundle as a text snippet in **Preferences → Text Snippets**, holding the procedure documentation, CPT/HCPCS codes with default modifiers, and optionally orders, order sets, and ICD-10 codes:
+
+  - Say the snippet's name while Air Scribe is recording, or type it into the note, and the documentation, services, and orders are added together.
+  - CPT codes land in the note's **Services** section. Codes that come from an order are added once the order is completed.
+  - Applying a bundle again skips anything already on the note, and ICD-10 codes are only added, never removed.
+  - Bundles can be shared across the site or limited to specific providers.
+
+  Contact your account manager for access.
+
+  ### [Beta Users Only] AI Orders from Air Scribe
+
+  Air Scribe can now draft orders from the visit conversation:
+
+  - When a provider clearly orders a lab, an imaging study, a DME item, or a referral, Air Scribe matches the order to your site's order sets and lists the matches, with their ICD-10 codes, in a new **Orders Detected** section.
+  - **Apply Scribe** adds the selected orders to the visit note as drafts. Nothing is sent until someone reviews and submits the orders.
+  - Applying Air Scribe again skips order sets that are already on the note.
+  - AI orders work on the web and on iOS and Android, and they use the order sets your site has already set up.
+
+  Contact your account manager for access.
+
+  ### [Beta Users Only] Procedure and Injection Orders in Order Sets
+
+  <img className="w-full rounded-xl" src="/images/master_changelogs/changelog/2026_08_30/procedure-orders.webp" alt="A draft procedure order for a methylprednisolone injection in the visit note, with fields for procedure location, SIG, drug expiry date, lot number, NDC, units, route, and modifiers" />
+
+  Order sets can now include procedures and injections through a new **Procedure** order type, listed under **Procedures & Injections** in **Preferences → Order Sets**:
+
+  - Record the procedure location, SIG, drug expiry date, lot number, NDC, units and quantity, route, modifiers, diagnosis, and notes.
+  - A procedure administered in-house carries its CPT/HCPCS code, which fills into **Services** when the order is completed. The NDC flows through to the encounter.
+  - Add a procedure order from the visit note with **Add Order**, on its own or as part of an order set.
+
+  See the [Order Sets guide](/air_provider/fill_a_chart_note/order_sets). Contact your account manager for access.
+
+  ### [Beta Users Only] Specialty-Aware Air Scribe
+
+  Air Scribe now writes and codes for the rendering provider's specialty:
+
+  - Air Scribe reads the provider's full taxonomy, primary and secondary, across documentation, goals, measurements, plan of care, flowsheet interventions, and coding, instead of assuming every visit is physical therapy. OT visits no longer get PT evaluation codes, and chiropractic visits no longer get PT codes.
+  - ICD-10 suggestions stay closer to the patient's established diagnoses.
+  - On the new [Services](/air_provider/fill_a_chart_note/services) section, suggestions take the codes billed at earlier visits into account, and a suggested service can be added with one click. In the mobile app, Services shows modifiers and units, and the **Surgery** category is renamed **Procedures**.
+
+  Contact your account manager for access.
+
+  ### Bug Fixes and Improvements
+
+  **Chart Notes & Air Scribe:**
+  - A **Retry** button reruns Air Scribe from the start, including transcription, and Air Scribe shows a clear error when a PDF can't be transcribed.
+  - **Apply Scribe** warns you when only part of the output could be applied, and Assessment and Plan output is no longer dropped.
+  - Text snippet formatting is kept after a snippet is applied, long text wraps inside chart note tables, and surgical notes include the patient's intake history.
+  - Notes can be submitted with zero units, and the **Default** unit calculation rule is renamed **Ceiling method**.
+
+  **Orders & Medications:**
+  - CPT and ICD-10 codes on an order now apply to the note when the order is completed rather than when it's created.
+  - You can print all completed orders from the visit note at once, the orders list shows a single status that includes fax delivery, and non-medication order PDFs include facility details.
+  - eRx prescriptions now include days supply, and quantity, refills, and strength reliably reach the pharmacy.
+  - The medications **Drafts** tab is renamed **Pending Approvals**.
+
+  **Scheduling & Front Desk:**
+  - The calendar month view shows patients again, and scheduled appointments no longer disappear from the calendar.
+  - Pasted appointment details use the date and time you paste into, and moving an appointment no longer fails with an "unavailable slot" error.
+  - Pinned notes keep a change history that you can restore from.
+  - Patient Update forms are saved as attachments again.
+
+  **Plan of Care Tracker:**
+  - The drawer shows the referring provider's phone number, the edit drawer has a notes field, and **Resend Fax** is disabled when no fax number is on file.
+
+  **EHR Reports:**
+  - Every report category can be filtered by appointment type, reports can be filtered by provider credential, and more metrics drill down to the records behind them.
+
+</Update>
+
 <Update label="July 31, 2026" tags={["Insights"]}>
 
   ### [Beta Users Only] Unified Rules UI
