@@ -25,7 +25,7 @@ const {
   LOOKBACK_HOURS = '24',
   DIGEST_DATE,
   GITHUB_OUTPUT,
-  MODEL = 'gpt-4o',
+  MODEL = 'openai/gpt-4o',
 } = process.env;
 
 if (!GITHUB_MODELS_TOKEN) throw new Error('GITHUB_MODELS_TOKEN not set');
@@ -160,11 +160,13 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  const res = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+  const res = await fetch('https://models.github.ai/inference/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${GITHUB_MODELS_TOKEN}`,
-      'content-type': 'application/json',
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
     },
     body: JSON.stringify({
       model: MODEL,
@@ -173,12 +175,19 @@ ${prSummaries || '(no PRs)'}
     }),
   });
   const raw = await res.text();
-  if (!res.ok) throw new Error(`GitHub Models ${res.status}: ${raw}`);
+  const contentType = res.headers.get('content-type') || 'unknown';
+  if (!res.ok) {
+    throw new Error(
+      `GitHub Models ${res.status} (content-type: ${contentType}): ${raw.slice(0, 800)}`,
+    );
+  }
   let data;
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error(`GitHub Models returned non-JSON (status ${res.status}): ${raw.slice(0, 500)}`);
+    throw new Error(
+      `GitHub Models returned non-JSON. Status ${res.status}, content-type "${contentType}", body: ${raw.slice(0, 500)}`,
+    );
   }
   return (data.choices?.[0]?.message?.content || '').trim();
 }
