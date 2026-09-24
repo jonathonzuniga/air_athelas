@@ -174,11 +174,10 @@ ${prSummaries || '(no PRs)'}
     }),
   });
   const raw = await res.text();
-  const contentType = res.headers.get('content-type') || 'unknown';
-  const server = res.headers.get('server') || 'unknown';
+  const allHeaders = Object.fromEntries(res.headers.entries());
   if (!res.ok) {
     throw new Error(
-      `GitHub Models ${res.status} (server=${server}, content-type=${contentType}): ${raw.slice(0, 800)}`,
+      `GitHub Models ${res.status}\nheaders: ${JSON.stringify(allHeaders)}\nbody: ${raw.slice(0, 800)}`,
     );
   }
   let data;
@@ -186,7 +185,7 @@ ${prSummaries || '(no PRs)'}
     data = JSON.parse(raw);
   } catch {
     throw new Error(
-      `GitHub Models returned non-JSON. Status ${res.status}, server=${server}, content-type="${contentType}", body: ${raw.slice(0, 500)}`,
+      `GitHub Models returned non-JSON.\nstatus: ${res.status}\nheaders: ${JSON.stringify(allHeaders)}\nbody: ${raw.slice(0, 500)}`,
     );
   }
   return (data.choices?.[0]?.message?.content || '').trim();

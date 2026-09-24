@@ -37,7 +37,7 @@ jobs:
       - name: Generate digest
         id: gen
         env:
-          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODELS_TOKEN: ${{ secrets.SENSE_FRONTEND_GITHUB_TOKEN }}
           SENSE_FRONTEND_GITHUB_TOKEN: ${{ secrets.SENSE_FRONTEND_GITHUB_TOKEN }}
           LOOKBACK_HOURS: ${{ github.event.inputs.lookback_hours || '24' }}
           DIGEST_DATE: ${{ github.event.inputs.digest_date }}
