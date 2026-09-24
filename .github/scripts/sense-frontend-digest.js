@@ -25,7 +25,7 @@ const {
   LOOKBACK_HOURS = '24',
   DIGEST_DATE,
   GITHUB_OUTPUT,
-  MODEL = 'openai/gpt-4o',
+  MODEL = 'gpt-4o',
 } = process.env;
 
 if (!GITHUB_MODELS_TOKEN) throw new Error('GITHUB_MODELS_TOKEN not set');
@@ -160,7 +160,7 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  const res = await fetch('https://models.github.ai/inference/chat/completions', {
+  const res = await fetch('https://models.inference.ai.azure.com/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${GITHUB_MODELS_TOKEN}`,
@@ -172,8 +172,14 @@ ${prSummaries || '(no PRs)'}
       messages: [{ role: 'user', content: prompt }],
     }),
   });
-  if (!res.ok) throw new Error(`GitHub Models ${res.status}: ${await res.text()}`);
-  const data = await res.json();
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`GitHub Models ${res.status}: ${raw}`);
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`GitHub Models returned non-JSON (status ${res.status}): ${raw.slice(0, 500)}`);
+  }
   return (data.choices?.[0]?.message?.content || '').trim();
 }
 
