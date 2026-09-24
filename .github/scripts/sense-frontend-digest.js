@@ -164,9 +164,8 @@ ${prSummaries || '(no PRs)'}
     method: 'POST',
     headers: {
       Authorization: `Bearer ${GITHUB_MODELS_TOKEN}`,
-      Accept: 'application/json',
+      Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json',
-      'X-GitHub-Api-Version': '2022-11-28',
     },
     body: JSON.stringify({
       model: MODEL,
@@ -176,9 +175,10 @@ ${prSummaries || '(no PRs)'}
   });
   const raw = await res.text();
   const contentType = res.headers.get('content-type') || 'unknown';
+  const server = res.headers.get('server') || 'unknown';
   if (!res.ok) {
     throw new Error(
-      `GitHub Models ${res.status} (content-type: ${contentType}): ${raw.slice(0, 800)}`,
+      `GitHub Models ${res.status} (server=${server}, content-type=${contentType}): ${raw.slice(0, 800)}`,
     );
   }
   let data;
@@ -186,7 +186,7 @@ ${prSummaries || '(no PRs)'}
     data = JSON.parse(raw);
   } catch {
     throw new Error(
-      `GitHub Models returned non-JSON. Status ${res.status}, content-type "${contentType}", body: ${raw.slice(0, 500)}`,
+      `GitHub Models returned non-JSON. Status ${res.status}, server=${server}, content-type="${contentType}", body: ${raw.slice(0, 500)}`,
     );
   }
   return (data.choices?.[0]?.message?.content || '').trim();
