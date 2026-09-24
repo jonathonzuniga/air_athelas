@@ -18,6 +18,7 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const {
   GITHUB_MODELS_TOKEN,
@@ -160,35 +161,29 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  const res = await fetch('https://models.github.ai/inference/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GITHUB_MODELS_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  // Shell out to `gh models run` — the official GH CLI extension owns the
+  // correct endpoint / auth / model-id conventions, so we don't have to guess.
+  // The workflow installs it via `gh extension install github/gh-models`.
+  return new Promise((resolve, reject) => {
+    const child = spawn('gh', ['models', 'run', MODEL], {
+      env: { ...process.env, GH_TOKEN: GITHUB_MODELS_TOKEN },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`gh models run exited ${code}\nstderr: ${stderr}\nstdout: ${stdout.slice(0, 500)}`));
+        return;
+      }
+      resolve(stdout.trim());
+    });
+    child.stdin.write(prompt);
+    child.stdin.end();
   });
-  const raw = await res.text();
-  const allHeaders = Object.fromEntries(res.headers.entries());
-  if (!res.ok) {
-    throw new Error(
-      `GitHub Models ${res.status}\nheaders: ${JSON.stringify(allHeaders)}\nbody: ${raw.slice(0, 800)}`,
-    );
-  }
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      `GitHub Models returned non-JSON.\nstatus: ${res.status}\nheaders: ${JSON.stringify(allHeaders)}\nbody: ${raw.slice(0, 500)}`,
-    );
-  }
-  return (data.choices?.[0]?.message?.content || '').trim();
 }
 
 function escapeHtml(s) {
