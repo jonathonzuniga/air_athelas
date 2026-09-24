@@ -2,34 +2,37 @@
  * Daily changelog digest for sense_frontend.
  *
  * Fetches PRs merged to getathelas/sense_frontend:master in the last N hours,
- * asks Claude to draft a Mintlify <Update> block in the voice defined by
- * .cursor/rules/doc_writer.mdc, and writes the digest to _digests/ so the
- * workflow can email it and upload it as an artifact.
+ * asks a model on GitHub Models to draft a Mintlify <Update> block in the
+ * voice defined by .cursor/rules/doc_writer.mdc, and writes the digest to
+ * _digests/ so the workflow can email it and upload it as an artifact.
  *
  * Env:
- *   ANTHROPIC_API_KEY           - required
+ *   GITHUB_MODELS_TOKEN         - required, workflow's GITHUB_TOKEN (with
+ *                                 permissions.models: read) or a PAT with
+ *                                 the models:read scope
  *   SENSE_FRONTEND_GITHUB_TOKEN - required, PAT with read on getathelas/sense_frontend
  *   LOOKBACK_HOURS              - default 24
  *   DIGEST_DATE                 - optional YYYY-MM-DD override for the label
+ *   MODEL                       - optional GH Models model id, default openai/gpt-4o
  */
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const {
-  ANTHROPIC_API_KEY,
+  GITHUB_MODELS_TOKEN,
   SENSE_FRONTEND_GITHUB_TOKEN,
   LOOKBACK_HOURS = '24',
   DIGEST_DATE,
   GITHUB_OUTPUT,
+  MODEL = 'openai/gpt-4o',
 } = process.env;
 
-if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not set');
+if (!GITHUB_MODELS_TOKEN) throw new Error('GITHUB_MODELS_TOKEN not set');
 if (!SENSE_FRONTEND_GITHUB_TOKEN) throw new Error('SENSE_FRONTEND_GITHUB_TOKEN not set');
 
 const REPO = 'getathelas/sense_frontend';
 const BASE_BRANCH = 'master';
-const CLAUDE_MODEL = 'claude-sonnet-5';
 const LOOKBACK = Number(LOOKBACK_HOURS);
 const NOW = new Date();
 const SINCE = new Date(NOW.getTime() - LOOKBACK * 3600 * 1000);
@@ -124,22 +127,21 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://models.github.ai/inference/chat/completions', {
     method: 'POST',
     headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
+      Authorization: `Bearer ${GITHUB_MODELS_TOKEN}`,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model: MODEL,
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`GitHub Models ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return (data.content?.[0]?.text || '').trim();
+  return (data.choices?.[0]?.message?.content || '').trim();
 }
 
 function escapeHtml(s) {
@@ -186,7 +188,7 @@ function markdownToEmailHtml(md, prCount) {
   return `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:24px;color:#222;background:#fff;">
 <h1 style="color:#F9345F;border-bottom:2px solid #F9345F;padding-bottom:8px;font-size:22px;">sense_frontend daily digest — ${DATE_LABEL}</h1>
-<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by ${CLAUDE_MODEL}; verify before forwarding.</p>
+<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by ${MODEL} via GitHub Models; verify before forwarding.</p>
 ${bodyHtml}
 </body></html>`;
 }
@@ -228,7 +230,7 @@ async function main() {
     });
   }
 
-  console.log(`Drafting digest with ${CLAUDE_MODEL}…`);
+  console.log(`Drafting digest with ${MODEL} via GitHub Models…`);
   const draft = await draftDigest(enriched);
   console.log(`Draft length: ${draft.length} chars`);
 
