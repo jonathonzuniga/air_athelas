@@ -51,14 +51,47 @@ async function ghFetch(url) {
 }
 
 async function fetchMergedPRs() {
-  const q = `is:pr is:merged repo:${REPO} base:${BASE_BRANCH} merged:>=${SINCE.toISOString()}`;
-  const url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=100&sort=updated&order=desc`;
-  const data = await ghFetch(url);
-  return data.items || [];
-}
+  // First, sanity-check that the token can see the repo at all. This gives a
+  // much clearer error than paginating /pulls and getting a 404 mid-loop.
+  try {
+    await ghFetch(`https://api.github.com/repos/${REPO}`);
+  } catch (err) {
+    throw new Error(
+      `Cannot reach ${REPO}. Check that SENSE_FRONTEND_GITHUB_TOKEN is a fine-grained PAT with:\n` +
+        `  - Resource owner: getathelas\n` +
+        `  - Repository access: getathelas/sense_frontend\n` +
+        `  - Permissions: Contents: Read, Pull requests: Read, Metadata: Read\n` +
+        `  - Org admin approval (if required by getathelas org policy)\n\n` +
+        `Underlying error: ${err.message}`,
+    );
+  }
 
-async function fetchPRDetail(number) {
-  return ghFetch(`https://api.github.com/repos/${REPO}/pulls/${number}`);
+  // Walk /pulls sorted by updated desc, stopping when we cross the SINCE boundary.
+  // per_page=100 is the max; we cap at 5 pages (500 PRs) as a safety limit for
+  // very long lookback windows.
+  const merged = [];
+  const sinceIso = SINCE.toISOString();
+  for (let page = 1; page <= 5; page++) {
+    const url = `https://api.github.com/repos/${REPO}/pulls?state=closed&base=${BASE_BRANCH}&sort=updated&direction=desc&per_page=100&page=${page}`;
+    const items = await ghFetch(url);
+    if (!items.length) break;
+    for (const pr of items) {
+      if (pr.merged_at && pr.merged_at >= sinceIso) {
+        merged.push({
+          number: pr.number,
+          title: pr.title,
+          html_url: pr.html_url,
+          user: pr.user?.login || 'unknown',
+          body: pr.body || '',
+        });
+      }
+    }
+    // The list is sorted by updated_at desc. If the oldest item on this page
+    // is already older than SINCE, no later page can contain a fresher merge.
+    const oldest = items[items.length - 1];
+    if (oldest.updated_at < sinceIso) break;
+  }
+  return merged;
 }
 
 function trimBody(body, max = 1500) {
@@ -203,52 +236,43 @@ async function writeOutput(kv) {
 
 async function main() {
   console.log(`Fetching PRs merged to ${REPO}:${BASE_BRANCH} since ${SINCE.toISOString()}`);
-  const items = await fetchMergedPRs();
-  console.log(`Found ${items.length} PR(s)`);
+  const prs = await fetchMergedPRs();
+  console.log(`Found ${prs.length} PR(s)`);
 
   const digestDir = '_digests';
   await fs.mkdir(digestDir, { recursive: true });
   const mdPath = path.join(digestDir, `sense-frontend-${DATE_LABEL}.md`);
   const htmlPath = path.join(digestDir, `sense-frontend-${DATE_LABEL}.html`);
 
-  if (items.length === 0) {
+  if (prs.length === 0) {
     await fs.writeFile(mdPath, `NO_MERGES\n\nNo PRs merged to ${REPO}:${BASE_BRANCH} in the last ${LOOKBACK}h.\n`);
-    console.log('No PRs — skipping email.');
+    console.log('No PRs — skipping delivery.');
     await writeOutput({ skip_email: 'true', digest_date: DATE_LABEL, pr_count: '0' });
     return;
   }
 
-  const enriched = [];
-  for (const item of items) {
-    const detail = await fetchPRDetail(item.number).catch(() => null);
-    enriched.push({
-      number: item.number,
-      title: item.title,
-      html_url: item.html_url,
-      user: item.user.login,
-      body: detail?.body || item.body || '',
-    });
-  }
-
   console.log(`Drafting digest with ${MODEL} via GitHub Models…`);
-  const draft = await draftDigest(enriched);
+  const draft = await draftDigest(prs);
   console.log(`Draft length: ${draft.length} chars`);
 
   if (draft === 'NO_USER_FACING_CHANGES') {
-    await fs.writeFile(mdPath, `NO_USER_FACING_CHANGES\n\n${enriched.length} PRs merged, all infra/refactor.\n\n${enriched.map((p) => `- #${p.number} ${p.title}`).join('\n')}\n`);
-    console.log('Claude reported no user-facing changes — skipping email.');
-    await writeOutput({ skip_email: 'true', digest_date: DATE_LABEL, pr_count: String(enriched.length) });
+    await fs.writeFile(
+      mdPath,
+      `NO_USER_FACING_CHANGES\n\n${prs.length} PRs merged, all infra/refactor.\n\n${prs.map((p) => `- #${p.number} ${p.title}`).join('\n')}\n`,
+    );
+    console.log('Model reported no user-facing changes — skipping delivery.');
+    await writeOutput({ skip_email: 'true', digest_date: DATE_LABEL, pr_count: String(prs.length) });
     return;
   }
 
   await fs.writeFile(mdPath, draft + '\n');
-  await fs.writeFile(htmlPath, markdownToEmailHtml(draft, enriched.length));
+  await fs.writeFile(htmlPath, markdownToEmailHtml(draft, prs.length));
   console.log(`Wrote ${mdPath} and ${htmlPath}`);
 
   await writeOutput({
     skip_email: 'false',
     digest_date: DATE_LABEL,
-    pr_count: String(enriched.length),
+    pr_count: String(prs.length),
     md_path: mdPath,
     html_path: htmlPath,
   });
