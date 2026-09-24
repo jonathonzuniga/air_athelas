@@ -1,0 +1,65 @@
+name: sense_frontend daily changelog
+
+on:
+  schedule:
+    # 07:00 UTC = midnight PDT (Mar-Nov) / 11pm PST previous day (Nov-Mar).
+    # GitHub Actions cron does not honor DST; the 1-hour drift is accepted.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_hours:
+        description: 'How many hours back to include'
+        required: false
+        default: '24'
+      digest_date:
+        description: 'Override digest date label (YYYY-MM-DD)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sense-frontend-digest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate digest
+        id: gen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SENSE_FRONTEND_GITHUB_TOKEN: ${{ secrets.SENSE_FRONTEND_GITHUB_TOKEN }}
+          LOOKBACK_HOURS: ${{ github.event.inputs.lookback_hours || '24' }}
+          DIGEST_DATE: ${{ github.event.inputs.digest_date }}
+        run: node .github/scripts/sense-frontend-digest.js
+
+      - name: Upload digest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sense-frontend-digest-${{ steps.gen.outputs.digest_date || github.run_id }}
+          path: _digests/
+          retention-days: 30
+
+      - name: Email digest
+        if: steps.gen.outputs.skip_email != 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "sense_frontend digest — ${{ steps.gen.outputs.digest_date }} (${{ steps.gen.outputs.pr_count }} PRs)"
+          to: jonathon.zuniga@commure.com
+          from: "sense_frontend digest <${{ secrets.GMAIL_USERNAME }}>"
+          html_body: file://${{ steps.gen.outputs.html_path }}
+          attachments: ${{ steps.gen.outputs.md_path }}
