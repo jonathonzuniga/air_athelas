@@ -42,7 +42,10 @@ const cursorAuth = () => ({
 });
 
 const REPO = 'getathelas/sense_frontend';
-const BASE_BRANCH = 'master';
+// develop = staging. Merges here are individual features landing before the
+// next release cut, so this is where "fine-grained changelog" content lives.
+// master is release cuts (batched Release/xxx branches) — too coarse.
+const BASE_BRANCH = 'develop';
 const LOOKBACK = Number(LOOKBACK_HOURS);
 const NOW = new Date();
 const SINCE = new Date(NOW.getTime() - LOOKBACK * 3600 * 1000);
@@ -61,8 +64,6 @@ async function ghFetch(url) {
 }
 
 async function fetchMergedPRs() {
-  // First, sanity-check that the token can see the repo at all. This gives a
-  // much clearer error than paginating /pulls and getting a 404 mid-loop.
   try {
     await ghFetch(`https://api.github.com/repos/${REPO}`);
   } catch (err) {
@@ -76,9 +77,6 @@ async function fetchMergedPRs() {
     );
   }
 
-  // Walk /pulls sorted by updated desc, stopping when we cross the SINCE boundary.
-  // per_page=100 is the max; we cap at 5 pages (500 PRs) as a safety limit for
-  // very long lookback windows.
   const merged = [];
   const sinceIso = SINCE.toISOString();
   for (let page = 1; page <= 5; page++) {
@@ -90,17 +88,38 @@ async function fetchMergedPRs() {
         merged.push({
           number: pr.number,
           title: pr.title,
-          html_url: pr.html_url,
           user: pr.user?.login || 'unknown',
           body: pr.body || '',
+          labels: (pr.labels || []).map((l) => l.name),
         });
       }
     }
-    // The list is sorted by updated_at desc. If the oldest item on this page
-    // is already older than SINCE, no later page can contain a fresher merge.
     const oldest = items[items.length - 1];
     if (oldest.updated_at < sinceIso) break;
   }
+
+  // Enrich each PR with a file summary — helps the drafter identify user-
+  // facing changes (frontend/features/*) vs infra/tests/deps.
+  for (const pr of merged) {
+    try {
+      const files = await ghFetch(
+        `https://api.github.com/repos/${REPO}/pulls/${pr.number}/files?per_page=100`,
+      );
+      const dirCounts = {};
+      for (const f of files) {
+        const topDir = f.filename.split('/').slice(0, 3).join('/');
+        dirCounts[topDir] = (dirCounts[topDir] || 0) + 1;
+      }
+      pr.fileSummary = Object.entries(dirCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([dir, n]) => `${dir} (${n})`)
+        .join(', ');
+    } catch {
+      pr.fileSummary = '';
+    }
+  }
+
   return merged;
 }
 
@@ -118,11 +137,14 @@ async function draftDigest(prs) {
     year: 'numeric',
   });
 
+  // Anonymize each PR as "Change N" — the agent should never see PR numbers
+  // or committer names, so it can't leak them into the output.
   const prSummaries = prs
-    .map(
-      (pr) =>
-        `- #${pr.number} "${pr.title}" by @${pr.user}\n  URL: ${pr.html_url}\n  Body: ${trimBody(pr.body)}`,
-    )
+    .map((pr, i) => {
+      const labels = pr.labels?.length ? `\n  Labels: ${pr.labels.join(', ')}` : '';
+      const files = pr.fileSummary ? `\n  Files (top dirs): ${pr.fileSummary}` : '';
+      return `Change ${i + 1}:\n  Title: ${pr.title}${labels}${files}\n  Description: ${trimBody(pr.body)}`;
+    })
     .join('\n\n');
 
   const prompt = `You are drafting an internal daily changelog digest for the sense_frontend repository (the Air EHR web app). It will be emailed to one internal reader — it is NOT published to docs.athelas.com and does NOT need images.
@@ -173,28 +195,77 @@ ${prSummaries || '(no PRs)'}
   const branchName = `digest/${DATE_LABEL}-${Date.now()}`;
   const outputPath = `_digests/agent-output-${DATE_LABEL}.md`;
 
-  const agentPrompt = `You are drafting an internal daily changelog digest for the sense_frontend repository. This is NOT a documentation page — it's a Markdown file that will be posted as an internal GitHub Issue.
+  const humanDate = new Date(DATE_LABEL).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  const agentPrompt = `You are drafting a daily changelog digest for **external Air customers** — practice admins, providers, front-desk staff, and billers using the Air EHR. This content will be emailed to real customers within hours of you writing it. Treat every line as customer-facing and contract-adjacent.
 
 ## Steps (in order)
 
-1. Read the file .cursor/rules/doc_writer.mdc completely for tone, product-name, and structural conventions.
+1. Read .cursor/rules/doc_writer.mdc completely. It defines tone, canonical product names, banned terms, and quality bars. Every rule in that file applies here.
+2. Write the digest to a NEW file at ${outputPath}. That file must contain exactly one Mintlify <Update> block and nothing else.
+3. Commit and push to your branch. Do NOT open a PR. Do NOT modify any other files.
 
-2. Write the drafted digest to a NEW file at ${outputPath}. The file must contain exactly one Mintlify <Update> block and nothing else.
+## Absolute rules (violating any of these breaks the pipeline)
 
-3. Commit the new file and push to your branch. Do NOT open a PR. Do NOT modify any other files.
+- **NEVER include** PR numbers, GitHub URLs, commit hashes, branch names, ticket IDs (Linear, Jira), developer usernames, or references to "Change 1 / Change 2" from the input below.
+- **NEVER include** internal codenames: ARES, Triron, Gladriel, Galadriel, Normandy, Openclaw, sense_frontend, or any repository/service name. Refer to the product as "Air" only.
+- **NEVER include** pricing, dollar amounts we charge, dated roadmap commitments ("coming in October"), unreleased features that aren't beta-available, or sales/marketing spin.
+- **NEVER fabricate.** If a change's description is too thin to say something concrete and true about it, SKIP it. Silence is safer than invention.
 
-## Content rules
+## Structure (this shape is non-negotiable)
 
-- Follow doc_writer.mdc rules exactly: canonical product names (Air, Insights — never "Air Clinical" / "Athelas EHR"), no pricing, no dated roadmap commitments, no internal codenames.
-- Use the wrapper: <Update label="${new Date(DATE_LABEL).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}" tags={["Air"]}>...</Update>
-- Inside the block, group PRs by user-facing theme with ### H3 headings (Chart Notes, Scheduling, Reports, Bug Fixes and Improvements, etc.).
-- Bullets summarize what changed for the end user, not the diff. Bold UI labels.
-- Skip infra / CI / lint-only PRs from the themed sections, but include every PR in a "PRs included" appendix at the bottom.
-- If none of the PRs are user-facing, write the file with EXACTLY the text \`NO_USER_FACING_CHANGES\` — nothing else.
+<Update label="${humanDate}" tags={["Air"]}>
 
-## PRs merged in the last ${LOOKBACK}h on getathelas/sense_frontend:master
+  ## New
 
-${prSummaries || '(no PRs)'}
+  ### <Feature or capability name (noun phrase)>
+  _<Rollout state> · <Affected role or area>_
+
+  <2–4 sentences of prose describing what shipped, why it matters, what workflow it improves or replaces. Written for a clinician / admin, not a developer. Bold UI element names inline (e.g. **Chart Notes**, **Save**).>
+
+  Where to find it: **<Top-level section → Subsection → Action>**.
+
+  ## Changed
+
+  ### <Behavior-change name>
+  _<Rollout state> · <Affected role or area>_
+
+  <Prose describing the old behavior, the new behavior, and any workflow impact. Include the "why" if the description gives it.>
+
+  ## Fixed
+
+  - **<UI label or workflow>** — one-sentence description of the fix and where it was noticeable.
+  - **<Another fix>** — ...
+
+</Update>
+
+## Section rules
+
+- **Prioritized top-down**: New before Changed before Fixed. Omit any section that would be empty — do not write "None" placeholders.
+- **New**: substantive net-new capabilities. Beta or limited rollouts allowed IF a customer can actually be enabled today (label them e.g. \`_Beta customers · Providers_\`).
+- **Changed**: behavior changes to existing features. Reader needs to know if their workflow just shifted.
+- **Fixed**: bug fixes noticeable to customers. Collapse to one-line bullets — do not give a small fix a paragraph.
+- **Rollout state**: pick one of \`Live now\`, \`Rolls out with next release\`, \`Beta customers\`. If you cannot infer it confidently, use \`Rolls out with next release\` (these are develop-branch merges, so that is the safe default).
+- **Affected role or area**: use \`All users\`, \`Providers\`, \`Front desk\`, \`Admins\`, \`Billers\`, \`Patients (portal)\` — or a specific area like \`Providers, in Flowsheets\`.
+- **Where to find it**: only include when the location is non-obvious. Skip for fixes and for changes to something the user is already staring at.
+
+## Classification & filtering
+
+For every input Change below, decide:
+1. Is this **user-facing**? (Renders differently, behaves differently, or enables a workflow. NOT: refactors, tests, CI, dependency bumps, internal telemetry, developer tooling.) If no → SKIP silently.
+2. Is the description **rich enough** to write something concrete and true? A one-line title with no body is usually NOT rich enough. When in doubt → SKIP.
+3. Is this a **new capability**, a **behavior change**, or a **fix**? Route to the matching section.
+4. Can this be **grouped** with another Change? Multiple PRs on the same feature should combine into one entry, not appear separately.
+
+Be RUTHLESS. A digest with 3 crisp entries beats one with 12 padded ones. If literally nothing is worth writing, output EXACTLY the text \`NO_MEANINGFUL_CHANGES\` (nothing else) so the pipeline skips distribution.
+
+## Input — Changes merged to \`develop\` in the last ${LOOKBACK} hours
+
+${prSummaries || '(no changes)'}
 `;
 
   console.log(`Spawning Cursor agent on ${OWN_REPO} branch ${branchName}…`);
@@ -332,12 +403,12 @@ async function main() {
   const draft = await draftDigest(prs);
   console.log(`Draft length: ${draft.length} chars`);
 
-  if (draft === 'NO_USER_FACING_CHANGES') {
+  if (draft === 'NO_MEANINGFUL_CHANGES') {
     await fs.writeFile(
       mdPath,
-      `NO_USER_FACING_CHANGES\n\n${prs.length} PRs merged, all infra/refactor.\n\n${prs.map((p) => `- #${p.number} ${p.title}`).join('\n')}\n`,
+      `NO_MEANINGFUL_CHANGES\n\n${prs.length} PRs merged, none met the customer-facing signal bar.\n`,
     );
-    console.log('Model reported no user-facing changes — skipping delivery.');
+    console.log('Agent reported no meaningful customer-facing changes — skipping delivery.');
     await writeOutput({ skip_email: 'true', digest_date: DATE_LABEL, pr_count: String(prs.length) });
     return;
   }
