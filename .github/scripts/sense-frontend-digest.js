@@ -2,34 +2,31 @@
  * Daily changelog digest for sense_frontend.
  *
  * Fetches PRs merged to getathelas/sense_frontend:master in the last N hours,
- * asks a model on GitHub Models to draft a Mintlify <Update> block in the
- * voice defined by .cursor/rules/doc_writer.mdc, and writes the digest to
- * _digests/ so the workflow can email it and upload it as an artifact.
+ * asks a Groq-hosted model to draft a Mintlify <Update> block in the voice
+ * defined by .cursor/rules/doc_writer.mdc, and writes the digest to
+ * _digests/ so the workflow can post it as a GitHub Issue.
  *
  * Env:
- *   GITHUB_MODELS_TOKEN         - required, workflow's GITHUB_TOKEN (with
- *                                 permissions.models: read) or a PAT with
- *                                 the models:read scope
+ *   GROQ_API_KEY                - required, from console.groq.com/keys
  *   SENSE_FRONTEND_GITHUB_TOKEN - required, PAT with read on getathelas/sense_frontend
  *   LOOKBACK_HOURS              - default 24
  *   DIGEST_DATE                 - optional YYYY-MM-DD override for the label
- *   MODEL                       - optional GH Models model id, default openai/gpt-4o
+ *   MODEL                       - optional Groq model id, default llama-3.3-70b-versatile
  */
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
 
 const {
-  GITHUB_MODELS_TOKEN,
+  GROQ_API_KEY,
   SENSE_FRONTEND_GITHUB_TOKEN,
   LOOKBACK_HOURS = '24',
   DIGEST_DATE,
   GITHUB_OUTPUT,
-  MODEL = 'openai/gpt-4o',
+  MODEL = 'llama-3.3-70b-versatile',
 } = process.env;
 
-if (!GITHUB_MODELS_TOKEN) throw new Error('GITHUB_MODELS_TOKEN not set');
+if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 if (!SENSE_FRONTEND_GITHUB_TOKEN) throw new Error('SENSE_FRONTEND_GITHUB_TOKEN not set');
 
 const REPO = 'getathelas/sense_frontend';
@@ -161,29 +158,22 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  // Shell out to `gh models run` — the official GH CLI extension owns the
-  // correct endpoint / auth / model-id conventions, so we don't have to guess.
-  // The workflow installs it via `gh extension install github/gh-models`.
-  return new Promise((resolve, reject) => {
-    const child = spawn('gh', ['models', 'run', MODEL], {
-      env: { ...process.env, GH_TOKEN: GITHUB_MODELS_TOKEN },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d) => (stdout += d));
-    child.stderr.on('data', (d) => (stderr += d));
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`gh models run exited ${code}\nstderr: ${stderr}\nstdout: ${stdout.slice(0, 500)}`));
-        return;
-      }
-      resolve(stdout.trim());
-    });
-    child.stdin.write(prompt);
-    child.stdin.end();
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    }),
   });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`Groq ${res.status}: ${raw.slice(0, 800)}`);
+  const data = JSON.parse(raw);
+  return (data.choices?.[0]?.message?.content || '').trim();
 }
 
 function escapeHtml(s) {
@@ -230,7 +220,7 @@ function markdownToEmailHtml(md, prCount) {
   return `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:24px;color:#222;background:#fff;">
 <h1 style="color:#F9345F;border-bottom:2px solid #F9345F;padding-bottom:8px;font-size:22px;">sense_frontend daily digest — ${DATE_LABEL}</h1>
-<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by ${MODEL} via GitHub Models; verify before forwarding.</p>
+<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by ${MODEL} via Groq; verify before forwarding.</p>
 ${bodyHtml}
 </body></html>`;
 }
@@ -260,7 +250,7 @@ async function main() {
     return;
   }
 
-  console.log(`Drafting digest with ${MODEL} via GitHub Models…`);
+  console.log(`Drafting digest with ${MODEL} via Groq…`);
   const draft = await draftDigest(prs);
   console.log(`Draft length: ${draft.length} chars`);
 
