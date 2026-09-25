@@ -64,28 +64,18 @@ jobs:
             --description "Auto-posted sense_frontend daily digest" \
             2>/dev/null || true
 
-      - name: Post digest as GitHub Issue (internal archive)
+      - name: Post digest as GitHub Issue
         if: steps.gen.outputs.skip_email != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # This is the delivery trigger. GitHub's Slack app is subscribed to
+        # issues with the changelog-digest label on this repo via a
+        # `/github subscribe` command run in #air-digest-feed, so creating
+        # this issue auto-posts a Slack message that Galadriel picks up
+        # and fans out to the customer list.
         run: |
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "Air digest — ${{ steps.gen.outputs.digest_date }} (${{ steps.gen.outputs.pr_count }} PRs considered)" \
             --label changelog-digest \
             --body-file "${{ steps.gen.outputs.md_path }}"
-
-      - name: Email digest
-        if: steps.gen.outputs.skip_email != 'true'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.GMAIL_USER }}
-          password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          subject: "Air digest — ${{ steps.gen.outputs.digest_date }}"
-          to: jonathon.zuniga@commure.com
-          from: "Air digest <${{ secrets.GMAIL_USER }}>"
-          html_body: file://${{ steps.gen.outputs.html_path }}
-          attachments: ${{ steps.gen.outputs.md_path }}
