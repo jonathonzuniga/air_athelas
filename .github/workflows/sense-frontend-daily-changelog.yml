@@ -64,17 +64,28 @@ jobs:
             --description "Auto-posted sense_frontend daily digest" \
             2>/dev/null || true
 
-      - name: Post digest as GitHub Issue
+      - name: Post digest as GitHub Issue (persistent archive)
         if: steps.gen.outputs.skip_email != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Assigning triggers a "Participating" notification, which GitHub
-        # delivers by email regardless of watch-level filtering — the plain
-        # "Watching" pipeline was silently swallowing issue-creation emails.
         run: |
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "sense_frontend digest — ${{ steps.gen.outputs.digest_date }} (${{ steps.gen.outputs.pr_count }} PRs)" \
             --label changelog-digest \
-            --assignee jonathonzuniga \
             --body-file "${{ steps.gen.outputs.md_path }}"
+
+      - name: Email digest
+        if: steps.gen.outputs.skip_email != 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "sense_frontend digest — ${{ steps.gen.outputs.digest_date }} (${{ steps.gen.outputs.pr_count }} PRs)"
+          to: jonathon.zuniga@commure.com
+          from: "sense_frontend digest <${{ secrets.GMAIL_USER }}>"
+          html_body: file://${{ steps.gen.outputs.html_path }}
+          attachments: ${{ steps.gen.outputs.md_path }}
