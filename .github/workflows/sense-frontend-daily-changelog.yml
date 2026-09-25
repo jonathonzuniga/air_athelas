@@ -16,7 +16,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write  # need to create/delete the agent's scratch branch
   issues: write
 
 concurrency:
@@ -36,10 +36,13 @@ jobs:
       - name: Generate digest
         id: gen
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OWN_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SENSE_FRONTEND_GITHUB_TOKEN: ${{ secrets.SENSE_FRONTEND_GITHUB_TOKEN }}
           LOOKBACK_HOURS: ${{ github.event.inputs.lookback_hours || '24' }}
           DIGEST_DATE: ${{ github.event.inputs.digest_date }}
+        # Cursor agents can take several minutes; give the job headroom.
+        timeout-minutes: 20
         run: node .github/scripts/sense-frontend-digest.js
 
       - name: Upload digest artifact

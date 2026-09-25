@@ -2,32 +2,44 @@
  * Daily changelog digest for sense_frontend.
  *
  * Fetches PRs merged to getathelas/sense_frontend:master in the last N hours,
- * asks a Groq-hosted model to draft a Mintlify <Update> block in the voice
- * defined by .cursor/rules/doc_writer.mdc, and writes the digest to
- * _digests/ so the workflow can post it as a GitHub Issue.
+ * spawns a Cursor Cloud Agent that reads .cursor/rules/doc_writer.mdc and
+ * writes a Mintlify <Update> block to a scratch branch on this repo, then
+ * fetches that content back and deletes the branch. The workflow's next
+ * step posts the digest as a GitHub Issue.
  *
  * Env:
- *   GROQ_API_KEY                - required, from console.groq.com/keys
+ *   CURSOR_API_KEY              - required, from cursor.com/settings
+ *   OWN_REPO_TOKEN              - required, GitHub token with contents:write on
+ *                                 this repo (workflow's built-in GITHUB_TOKEN
+ *                                 with permissions.contents:write suffices)
  *   SENSE_FRONTEND_GITHUB_TOKEN - required, PAT with read on getathelas/sense_frontend
+ *   OWN_REPO                    - GITHUB_REPOSITORY (auto-set on runners)
  *   LOOKBACK_HOURS              - default 24
  *   DIGEST_DATE                 - optional YYYY-MM-DD override for the label
- *   MODEL                       - optional Groq model id, default llama-3.3-70b-versatile
  */
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const {
-  GROQ_API_KEY,
+  CURSOR_API_KEY,
+  OWN_REPO_TOKEN,
   SENSE_FRONTEND_GITHUB_TOKEN,
+  GITHUB_REPOSITORY: OWN_REPO,
   LOOKBACK_HOURS = '24',
   DIGEST_DATE,
   GITHUB_OUTPUT,
-  MODEL = 'llama-3.3-70b-versatile',
 } = process.env;
 
-if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+if (!CURSOR_API_KEY) throw new Error('CURSOR_API_KEY not set');
+if (!OWN_REPO_TOKEN) throw new Error('OWN_REPO_TOKEN not set');
 if (!SENSE_FRONTEND_GITHUB_TOKEN) throw new Error('SENSE_FRONTEND_GITHUB_TOKEN not set');
+if (!OWN_REPO) throw new Error('GITHUB_REPOSITORY not set');
+
+const cursorAuth = () => ({
+  Authorization: `Basic ${Buffer.from(`${CURSOR_API_KEY}:${CURSOR_API_KEY}`).toString('base64')}`,
+  'Content-Type': 'application/json',
+});
 
 const REPO = 'getathelas/sense_frontend';
 const BASE_BRANCH = 'master';
@@ -158,22 +170,88 @@ ${skill}
 ${prSummaries || '(no PRs)'}
 `;
 
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const branchName = `digest/${DATE_LABEL}-${Date.now()}`;
+  const outputPath = `_digests/agent-output-${DATE_LABEL}.md`;
+
+  const agentPrompt = `You are drafting an internal daily changelog digest for the sense_frontend repository. This is NOT a documentation page — it's a Markdown file that will be posted as an internal GitHub Issue.
+
+## Steps (in order)
+
+1. Read the file .cursor/rules/doc_writer.mdc completely for tone, product-name, and structural conventions.
+
+2. Write the drafted digest to a NEW file at ${outputPath}. The file must contain exactly one Mintlify <Update> block and nothing else.
+
+3. Commit the new file and push to your branch. Do NOT open a PR. Do NOT modify any other files.
+
+## Content rules
+
+- Follow doc_writer.mdc rules exactly: canonical product names (Air, Insights — never "Air Clinical" / "Athelas EHR"), no pricing, no dated roadmap commitments, no internal codenames.
+- Use the wrapper: <Update label="${new Date(DATE_LABEL).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}" tags={["Air"]}>...</Update>
+- Inside the block, group PRs by user-facing theme with ### H3 headings (Chart Notes, Scheduling, Reports, Bug Fixes and Improvements, etc.).
+- Bullets summarize what changed for the end user, not the diff. Bold UI labels.
+- Skip infra / CI / lint-only PRs from the themed sections, but include every PR in a "PRs included" appendix at the bottom.
+- If none of the PRs are user-facing, write the file with EXACTLY the text \`NO_USER_FACING_CHANGES\` — nothing else.
+
+## PRs merged in the last ${LOOKBACK}h on getathelas/sense_frontend:master
+
+${prSummaries || '(no PRs)'}
+`;
+
+  console.log(`Spawning Cursor agent on ${OWN_REPO} branch ${branchName}…`);
+  const spawnRes = await fetch('https://api.cursor.com/v0/agents', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: cursorAuth(),
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
+      prompt: { text: agentPrompt },
+      source: { repository: OWN_REPO, ref: 'main' },
+      target: { branchName, autoCreatePr: false },
     }),
   });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${raw.slice(0, 800)}`);
-  const data = JSON.parse(raw);
-  return (data.choices?.[0]?.message?.content || '').trim();
+  if (!spawnRes.ok) {
+    throw new Error(`Cursor spawn ${spawnRes.status}: ${(await spawnRes.text()).slice(0, 500)}`);
+  }
+  const agent = await spawnRes.json();
+  const actualBranch = agent.target?.branchName || agent.branchName || branchName;
+  console.log(`Agent ${agent.id} running (branch: ${actualBranch})`);
+
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 30000));
+    const statusRes = await fetch(`https://api.cursor.com/v0/agents/${agent.id}`, {
+      headers: cursorAuth(),
+    });
+    const status = await statusRes.json();
+    console.log(`  [${(i + 1) * 30}s] status=${status.status}`);
+    if (status.status === 'FINISHED') break;
+    if (status.status === 'FAILED' || status.status === 'ERRORED') {
+      throw new Error(`Cursor agent failed: ${JSON.stringify(status).slice(0, 500)}`);
+    }
+    if (i === 23) throw new Error('Cursor agent timed out after 12 minutes');
+  }
+
+  await new Promise((r) => setTimeout(r, 5000)); // small grace for git push visibility
+
+  console.log(`Fetching ${outputPath} from branch ${actualBranch}…`);
+  const contentRes = await fetch(
+    `https://api.github.com/repos/${OWN_REPO}/contents/${outputPath}?ref=${encodeURIComponent(actualBranch)}`,
+    { headers: { Authorization: `Bearer ${OWN_REPO_TOKEN}`, Accept: 'application/vnd.github+json' } },
+  );
+  if (!contentRes.ok) {
+    throw new Error(
+      `Could not fetch ${outputPath} from branch ${actualBranch}: ${contentRes.status} ${await contentRes.text()}`,
+    );
+  }
+  const contentData = await contentRes.json();
+  const content = Buffer.from(contentData.content, 'base64').toString('utf8').trim();
+
+  // Best-effort cleanup — leave the branch behind if delete fails (nightly runs
+  // would leak branches otherwise but a failed delete shouldn't fail the run).
+  const delRes = await fetch(
+    `https://api.github.com/repos/${OWN_REPO}/git/refs/heads/${encodeURIComponent(actualBranch)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${OWN_REPO_TOKEN}` } },
+  ).catch((err) => ({ ok: false, statusText: err.message }));
+  console.log(delRes.ok ? `Deleted branch ${actualBranch}` : `Warning: could not delete ${actualBranch} (${delRes.status || delRes.statusText})`);
+
+  return content;
 }
 
 function escapeHtml(s) {
@@ -220,7 +298,7 @@ function markdownToEmailHtml(md, prCount) {
   return `<!doctype html>
 <html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:24px;color:#222;background:#fff;">
 <h1 style="color:#F9345F;border-bottom:2px solid #F9345F;padding-bottom:8px;font-size:22px;">sense_frontend daily digest — ${DATE_LABEL}</h1>
-<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by ${MODEL} via Groq; verify before forwarding.</p>
+<p style="color:#666;font-size:13px;margin:8px 0 24px;">${prCount} PR${prCount === 1 ? '' : 's'} merged to master in the last ${LOOKBACK}h. Drafted by a Cursor Cloud Agent; verify before forwarding.</p>
 ${bodyHtml}
 </body></html>`;
 }
@@ -250,7 +328,7 @@ async function main() {
     return;
   }
 
-  console.log(`Drafting digest with ${MODEL} via Groq…`);
+  console.log(`Drafting digest via Cursor Cloud Agent…`);
   const draft = await draftDigest(prs);
   console.log(`Draft length: ${draft.length} chars`);
 
