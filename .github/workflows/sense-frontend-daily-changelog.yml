@@ -68,9 +68,13 @@ jobs:
         if: steps.gen.outputs.skip_email != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Assigning triggers a "Participating" notification, which GitHub
+        # delivers by email regardless of watch-level filtering — the plain
+        # "Watching" pipeline was silently swallowing issue-creation emails.
         run: |
           gh issue create \
             --repo "${{ github.repository }}" \
             --title "sense_frontend digest — ${{ steps.gen.outputs.digest_date }} (${{ steps.gen.outputs.pr_count }} PRs)" \
             --label changelog-digest \
+            --assignee jonathonzuniga \
             --body-file "${{ steps.gen.outputs.md_path }}"
