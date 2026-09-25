@@ -130,7 +130,9 @@ function trimBody(body, max = 1500) {
 }
 
 async function draftDigest(prs) {
-  const skill = await fs.readFile('.cursor/rules/doc_writer.mdc', 'utf8');
+  const branchName = `digest/${DATE_LABEL}-${Date.now()}`;
+  const outputPath = `_digests/agent-output-${DATE_LABEL}.md`;
+
   const humanDate = new Date(DATE_LABEL).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
@@ -146,60 +148,6 @@ async function draftDigest(prs) {
       return `Change ${i + 1}:\n  Title: ${pr.title}${labels}${files}\n  Description: ${trimBody(pr.body)}`;
     })
     .join('\n\n');
-
-  const prompt = `You are drafting an internal daily changelog digest for the sense_frontend repository (the Air EHR web app). It will be emailed to one internal reader — it is NOT published to docs.athelas.com and does NOT need images.
-
-Follow the tone and structural rules in the attached doc_writer skill file. In particular:
-- Use canonical product names (Air, Insights) — never "Air Clinical" / "Air Billing" / "Athelas EHR".
-- No pricing, no dated roadmap commitments, no internal codenames, no sales-enablement asides.
-- Ownership voice, not deficit voice. Second-person, present tense, active voice.
-- Bold UI labels and key terms.
-
-Output format — return EXACTLY one Mintlify <Update> block and nothing else:
-
-<Update label="${humanDate}" tags={["Air"]}>
-
-  ### <User-facing theme heading>
-
-  <bulleted summary of what changed for the end user, not the diff>
-
-  ### <Another theme>
-
-  ...
-
-  ### Bug Fixes and Improvements
-
-  **<sub-area>:**
-  - <fix in one line>
-
-  ---
-
-  **PRs included:**
-  - [#123](url) — title
-  - [#124](url) — title
-
-</Update>
-
-Grouping rules:
-- Group by user-facing theme (Chart Notes, Scheduling, Reports, Messaging, Bug Fixes and Improvements, etc.), NOT by PR.
-- SKIP infrastructure / CI / dependency / lint-only / test-only PRs from the themed sections, but list every PR in the "PRs included" appendix regardless so the reader can drill in.
-- If the appendix is the only thing that would be non-empty (i.e. no user-facing changes at all), return exactly the string NO_USER_FACING_CHANGES with no other output.
-
---- doc_writer skill (must follow) ---
-${skill}
-
---- PRs merged in the last ${LOOKBACK}h on ${REPO} base:${BASE_BRANCH} ---
-${prSummaries || '(no PRs)'}
-`;
-
-  const branchName = `digest/${DATE_LABEL}-${Date.now()}`;
-  const outputPath = `_digests/agent-output-${DATE_LABEL}.md`;
-
-  const humanDate = new Date(DATE_LABEL).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
 
   const agentPrompt = `You are drafting a daily changelog digest for **external Air customers** — practice admins, providers, front-desk staff, and billers using the Air EHR. This content will be emailed to real customers within hours of you writing it. Treat every line as customer-facing and contract-adjacent.
 
