@@ -280,7 +280,7 @@ ${prSummaries || '(no changes)'}
   const actualBranch = agent.target?.branchName || agent.branchName || branchName;
   console.log(`Agent ${agent.id} running (branch: ${actualBranch})`);
 
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 36; i++) {
     await new Promise((r) => setTimeout(r, 30000));
     const statusRes = await fetch(`https://api.cursor.com/v0/agents/${agent.id}`, {
       headers: cursorAuth(),
@@ -291,7 +291,7 @@ ${prSummaries || '(no changes)'}
     if (status.status === 'FAILED' || status.status === 'ERRORED') {
       throw new Error(`Cursor agent failed: ${JSON.stringify(status).slice(0, 500)}`);
     }
-    if (i === 23) throw new Error('Cursor agent timed out after 12 minutes');
+    if (i === 35) throw new Error('Cursor agent timed out after 18 minutes');
   }
 
   await new Promise((r) => setTimeout(r, 5000)); // small grace for git push visibility
